@@ -13,17 +13,17 @@ from font import get_font  # dynamic font
 
 # ---------------- CONFIG ----------------
 
-YOUTUBE_URL = "https://www.youtube.com/watch?v=AeO81mfRook"
+YOUTUBE_URL = ""
 BACKGROUND_VIDEOS = ["gameplay.mp4"]
-OUTPUT_VIDEO = "final_video.mp4"
-SEARCH_TERM = "pixelated kisses - Joji"
+SEARCH_TERM = "-"
+OUTPUT_VIDEO = SEARCH_TERM.split(" - ")[-2].strip().replace(" ","_") + "_lyric_video.mp4"
 SEGMENT_DURATION_S = 30
 VIDEO_SIZE = 1080  # square video
-TITLE_FONT_SIZE = 70
+TITLE_FONT_SIZE = 30
 LYRIC_FONT_SIZE = 55
-MAX_LINE_DURATION_S = 3.0
+MAX_LINE_DURATION_S = 5.0
 GLOBAL_SYNC_OFFSET_S = 0.0
-START_TIME_S = 35  # set seconds manually or None for auto
+START_TIME_S = None  # set seconds manually or None for auto
 
 # Extract only the song title (remove artist)
 SONG_TITLE = SEARCH_TERM.split(" - ")[-2].strip()
@@ -31,7 +31,7 @@ SONG_TITLE = SEARCH_TERM.split(" - ")[-2].strip()
 # ---------------- AUDIO ----------------
 
 def download_audio(url):
-    temp_path = "downloaded_audio.mp3"
+    temp_path = SEARCH_TERM.split(" - ")[-2].strip().replace(" ","_") + "_temp.mp3"
     ydl_opts = {
         'format': 'bestaudio/best',
         'postprocessors': [{
@@ -189,7 +189,7 @@ def make_text_clip_grid(lines, start, end):
 # ---------------- CREATE VIDEO ----------------
 
 def create_video(audio_segment, subtitles, background_videos, output_file, song_title):
-    temp_audio_path = "temp_audio.mp3"
+    temp_audio_path = SEARCH_TERM.split(" - ")[-2].strip().replace(" ","_") + "_audio.mp3"
     audio_segment.export(temp_audio_path, format="mp3")
     audio_clip = AudioFileClip(temp_audio_path)
     total_duration = audio_clip.duration
