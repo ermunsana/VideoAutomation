@@ -3,6 +3,11 @@ gameplay2.mp4
 *.mp3
 *.mp4
 *.lrc
+/final
+/mp3
+/backgrounds
+*.txt
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
