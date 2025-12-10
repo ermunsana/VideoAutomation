@@ -5,6 +5,11 @@ from pydub import AudioSegment
 # Import necessary components from moviepy
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+# Revert to the lowercase function import
+from moviepy.video.fx.Crop import Crop
+>>>>>>> parent of 3345059 (Update main.py)
 =======
 # Revert to the lowercase function import
 from moviepy.video.fx.Crop import Crop
@@ -14,7 +19,10 @@ import yt_dlp
 from syncedlyrics import search as lrc_search
 import concurrent.futures
 <<<<<<< HEAD
+<<<<<<< HEAD
 import textwrap
+=======
+>>>>>>> parent of 3345059 (Update main.py)
 =======
 >>>>>>> parent of 3345059 (Update main.py)
 
@@ -28,6 +36,9 @@ VIDEO_HEIGHT = 1920
 <<<<<<< HEAD
 =======
 # NOTE: Ensure this font path is correct on your system.
+<<<<<<< HEAD
+>>>>>>> parent of 3345059 (Update main.py)
+=======
 >>>>>>> parent of 3345059 (Update main.py)
 FONT_PATH = r"C:\Windows\Fonts\Arial.ttf"
 FONT_SIZE = 55
@@ -35,6 +46,7 @@ SEARCH_TERM = "poster boy - 2hollis"
 MAX_LINE_DURATION = 3.0
 GLOBAL_SYNC_OFFSET = 0.0
 
+<<<<<<< HEAD
 # ------------ GLOBAL SINGLETONS ------------
 # Load font once
 try:
@@ -48,6 +60,8 @@ WRAP_CHARS = int((VIDEO_WIDTH * 0.9) / AVG_CHAR_WIDTH)
 
 <<<<<<< HEAD
 
+=======
+>>>>>>> parent of 3345059 (Update main.py)
 =======
 >>>>>>> parent of 3345059 (Update main.py)
 # ---------------- 1. DOWNLOAD AUDIO ----------------
@@ -87,6 +101,7 @@ def get_loudest_segment(audio_path, duration_s=SEGMENT_DURATION):
     hop = int(frame_rate * 0.5)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     sq = samples * samples
     kernel = np.ones(window, dtype=np.float32)
     energy = np.convolve(sq, kernel, mode="valid")
@@ -103,6 +118,9 @@ def get_loudest_segment(audio_path, duration_s=SEGMENT_DURATION):
 
 
 # ---------------- 3. FETCH + PARSE LYRICS ----------------
+=======
+# ---------------- 3. FETCH SYNCHRONIZED LYRICS ----------------
+>>>>>>> parent of 3345059 (Update main.py)
 =======
 # ---------------- 3. FETCH SYNCHRONIZED LYRICS ----------------
 >>>>>>> parent of 3345059 (Update main.py)
@@ -124,6 +142,7 @@ def fetch_lrc(search_term, save_path="lyrics.lrc", timeout=10):
 
 
 def parse_lrc_file(path):
+<<<<<<< HEAD
 <<<<<<< HEAD
     raw = []
     with open(path, encoding="utf-8") as f:
@@ -184,6 +203,8 @@ def make_text_clip(text, start, end):
 
 # ---------------- 5. VIDEO BUILDER ----------------
 =======
+=======
+>>>>>>> parent of 3345059 (Update main.py)
     subs = []
     for line in open(path, encoding="utf-8"):
         line = line.strip()
@@ -227,6 +248,9 @@ def make_text_clip(text, start, end):
 
 
 # ---------------- 5. CREATE VIDEO ----------------
+<<<<<<< HEAD
+>>>>>>> parent of 3345059 (Update main.py)
+=======
 >>>>>>> parent of 3345059 (Update main.py)
 def create_video(audio_file, subtitles, background_video, output_file):
     audio_clip = AudioFileClip(audio_file)
@@ -236,12 +260,15 @@ def create_video(audio_file, subtitles, background_video, output_file):
     bg = bg.loop(duration=total) if bg.duration < total else bg.subclipped(0, total)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
     clips = [bg] + [make_text_clip(txt, t0, t1) for (t0, t1), txt in subtitles]
 
     final = CompositeVideoClip(clips, size=(VIDEO_WIDTH, VIDEO_HEIGHT)).with_audio(audio_clip)
 
     final.write_videofile(
 =======
+=======
+>>>>>>> parent of 3345059 (Update main.py)
     # 1. Resize to fill the height (1920)
     # This maintains aspect ratio, so a landscape video will become very wide (e.g., ~3413px)
     bg_clip = bg_clip.resized(height=VIDEO_HEIGHT)
