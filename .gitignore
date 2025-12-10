@@ -9,6 +9,7 @@ gameplay2.mp4
 *.txt
 
 
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
