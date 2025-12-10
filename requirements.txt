@@ -1,0 +1,8 @@
+moviepy
+pydub
+numpy
+Pillow
+yt-dlp
+syncedlyrics
+librosa
+soundfile
