@@ -19,7 +19,7 @@ SEGMENT_DURATION_S = 35
 VIDEO_SIZE = 1080
 TITLE_FONT_SIZE = 50
 LYRIC_FONT_SIZE = 40
-MIN_LINE_DURATION_S = 1.5
+MIN_LINE_DURATION_S = 1
 CHAR_FACTOR = 0.2
 GLOBAL_SYNC_OFFSET_S = 0.0
 START_TIME_S = None  # will be calculated per song to avoid duplicates
@@ -286,6 +286,7 @@ if __name__=="__main__":
 
     # Determine START_TIME_S to avoid duplicates
     start_time = determine_start_time(SONG_TITLE)
+    print(f"✓ Segment for '{SONG_TITLE}' will start at {start_time:.2f}s")
 
     trimmed, start = get_segment(audio, segment_duration, start_time, lyrics=subs_full)
 
@@ -299,7 +300,7 @@ if __name__=="__main__":
             t1n=min(segment_duration,max(t0n+0.1,t1))
             subs_adj.append(((t0n,t1n),text))
 
-    print(f"✓ Segment starts at {start:.2f}s, {len(subs_adj)} lyric lines, segment duration: {segment_duration:.2f}s")
+    print(f"✓ Segment actual start: {start:.2f}s, {len(subs_adj)} lyric lines, segment duration: {segment_duration:.2f}s")
 
     # Create incremental lyrics video
     create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO_INC, SONG_TITLE, start_time, incremental=True)
