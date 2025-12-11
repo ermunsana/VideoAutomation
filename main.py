@@ -15,17 +15,17 @@ LINKS_FILE = "links.txt"
 TRASH_FILE = "trash.txt"
 BACKGROUND_FOLDER = "backgrounds"
 FINAL_FOLDER = "final"
-SEGMENT_DURATION_S = 30 
+SEGMENT_DURATION_S = 30  
 VIDEO_SIZE = 1080
 TITLE_FONT_SIZE = 50
 LYRIC_FONT_SIZE = 40
-MIN_LINE_DURATION_S = 1.0
+MIN_LINE_DURATION_S = 1.5
 CHAR_FACTOR = 0.2
 GLOBAL_SYNC_OFFSET_S = 0.0
-START_TIME_S = None
+START_TIME_S = None  # Set to None for automatic start
 SHOW_TITLE = False
 MP3_FOLDER = "mp3"
-MAX_VIDEO_DURATION = 45  # seconds
+MAX_VIDEO_DURATION = 40  # seconds
 
 os.makedirs(MP3_FOLDER, exist_ok=True)
 os.makedirs(FINAL_FOLDER, exist_ok=True)
@@ -99,8 +99,6 @@ def get_segment(audio, duration_s, manual_start, lyrics=None):
     if manual_start is not None:
         start_ms = max(0, min(int(manual_start*1000), len(audio)-int(duration_s*1000)))
         return audio[start_ms:start_ms+int(duration_s*1000)], start_ms/1000
-
-    # Default: start at first lyric or beginning
     first_lyric_time = lyrics[0][0][0] if lyrics else 0.0
     start_ms = int(first_lyric_time*1000)
     trimmed = audio[start_ms:start_ms+int(duration_s*1000)]
@@ -202,7 +200,7 @@ def make_text_clip_grid(lines, start, end, song_title_words):
 def sanitize_filename(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
-def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time):
+def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time, incremental=True):
     clean_title_str=sanitize_filename(song_title)
     temp_audio=os.path.join(MP3_FOLDER,f"{clean_title_str}_temp.mp3")
     audio_segment.export(temp_audio,format="mp3")
@@ -219,7 +217,10 @@ def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, s
     song_title_words=set(song_title.lower().split())
     word_clips=[]
     for (t0,t1),text in subtitles:
-        word_clips.extend(make_incremental_word_clips(t0,t1,text,song_title_words))
+        if incremental:
+            word_clips.extend(make_incremental_word_clips(t0,t1,text,song_title_words))
+        else:
+            word_clips.append(make_text_clip_grid([text], t0, t1, song_title_words))
 
     clips=[bg_clip]+word_clips
 
@@ -239,24 +240,23 @@ def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, s
         base,ext=os.path.splitext(final_path)
         final_path=f"{base}_{int(start_time)}{ext}"
 
-    final.write_videofile(final_path,fps=30,codec="libx264",audio_codec="aac",preset="medium",ffmpeg_params=["-pix_fmt","yuv420p"])
+    final.write_videofile(final_path, fps=30, codec="libx264",audio_codec="aac",preset="medium",ffmpeg_params=["-pix_fmt","yuv420p"])
     os.remove(temp_audio)
     print(f"✓ Video ready: {final_path} (duration: {total:.2f}s)")
+    return final_path, total
 
 # ---------------- MAIN ----------------
 if __name__=="__main__":
     YOUTUBE_URL=get_next_link()
     meta=get_youtube_metadata(YOUTUBE_URL)
     SONG_TITLE=meta["song"]
-    OUTPUT_VIDEO=SONG_TITLE.replace(" ","_")+"_lyric_video.mp4"
+    OUTPUT_VIDEO_BASE=SONG_TITLE.replace(" ","_")+"_lyric_video.mp4"
 
     audio=download_audio(YOUTUBE_URL, SONG_TITLE)
 
-    # Fetch full lyrics first
     lrc = fetch_lrc_corrected(meta['artist'], meta['song'], SEGMENT_DURATION_S)
     subs_full = parse_lrc_content(lrc) if lrc else []
 
-    # Determine dynamic segment duration based on lyrics
     if START_TIME_S is None:
         if subs_full:
             last_lyric_time = subs_full[-1][0][1]
@@ -268,7 +268,6 @@ if __name__=="__main__":
 
     trimmed, start = get_segment(audio, segment_duration, START_TIME_S, lyrics=subs_full)
 
-    # Adjust subtitles relative to trimmed segment
     subs_adj=[]
     for (t0,t1),text in subs_full:
         t0 -= start
@@ -280,5 +279,12 @@ if __name__=="__main__":
 
     print(f"✓ Segment starts at {start:.2f}s, {len(subs_adj)} lyric lines, segment duration: {segment_duration:.2f}s")
 
-    create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO, SONG_TITLE, start)
+    # Incremental word-by-word video
+    OUTPUT_VIDEO_INC = OUTPUT_VIDEO_BASE.replace(".mp4","_inc.mp4")
+    create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO_INC, SONG_TITLE, start, incremental=True)
+
+    # Normal line-by-line video
+    OUTPUT_VIDEO_NOINC = OUTPUT_VIDEO_BASE.replace(".mp4","_noinc.mp4")
+    create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO_NOINC, SONG_TITLE, start, incremental=False)
+
     print("--- Done ---")
