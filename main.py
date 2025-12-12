@@ -30,10 +30,10 @@ BACKGROUND_FOLDER = "backgrounds"
 FINAL_FOLDER = "final"
 MP3_FOLDER = "mp3"
 
-SEGMENT_DURATION_S = 35
+SEGMENT_DURATION_S = 35 
 VIDEO_SIZE = 1080
 TITLE_FONT_SIZE = 50
-LYRIC_FONT_SIZE = 40
+LYRIC_FONT_SIZE = 30
 MIN_LINE_DURATION_S = 1
 CHAR_FACTOR = 0.08
 MIN_WORD_DURATION_S = 0.06
@@ -43,7 +43,7 @@ FUZZY_MATCH_RATIO = 0.55
 GLOBAL_SYNC_OFFSET_S = 0.0
 START_TIME_S = None
 SHOW_TITLE = False
-MAX_VIDEO_DURATION = 45  # seconds
+MAX_VIDEO_DURATION = 30  # seconds
 
 # Spotify API credentials
 SPOTIFY_CLIENT_ID = "9ee4f1bd0800439e888bb839adb47721"
@@ -140,7 +140,7 @@ def parse_lrc_content(lrc_content):
             else:
                 start = float(ts)
             start += GLOBAL_SYNC_OFFSET_S
-            txt = txt.strip()
+            txt = txt.strip().lower()
             if txt.lower() not in ("instrumental", "(instrumental)"):
                 raw_lines.append((start, txt))
         except Exception as e:
@@ -170,7 +170,7 @@ def make_text_clip_grid(lines, start, end, song_title_words):
     max_words_per_line = 3
     grid = []
     for line in lines:
-        ws = line.split()
+        ws = [w.lower() for w in line.split()]  # convert all words to lowercase
         buff = []
         for w in ws:
             buff.append(w)
@@ -187,16 +187,20 @@ def make_text_clip_grid(lines, start, end, song_title_words):
         x_offset = (VIDEO_SIZE - total_width) // 2
 
         for w in words:
-            for dx in [-1,0,1]:
-                for dy in [-1,0,1]:
+            # thinner inline glow: smaller offsets
+            for dx in [-0.5, 0, 0.5]:
+                for dy in [-0.5, 0, 0.5]:
                     if dx or dy:
                         draw.text((x_offset+dx, y_offset+dy), w, font=font, fill="white")
+            # main text
             draw.text((x_offset, y_offset), w, font=font, fill="white")
             x_offset += draw.textlength(w, font=font) + 10
 
         y_offset += LYRIC_FONT_SIZE
 
     return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
+
+
 
 def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time):
     clean = sanitize_filename(song_title)
