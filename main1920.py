@@ -30,9 +30,9 @@ MP3_FOLDER = "mp3"
 METADATA_FOLDER = "metadata"
 
 SEGMENT_DURATION_S = 35
-VIDEO_SIZE = (1080, 1080)  # Square video size (1080x1080)
+VIDEO_SIZE = (1080, 1920)  # Portrait mode (1080x1920)
 TITLE_FONT_SIZE = 50
-LYRIC_FONT_SIZE = 45
+LYRIC_FONT_SIZE = 30
 MIN_LINE_DURATION_S = 0.8
 
 CHAR_FACTOR = 0.8
@@ -233,19 +233,20 @@ def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, s
     if not vids:
         raise Exception("No background videos found.")
     bg = random.choice(vids)
-
-    # Use the background video without resizing, since it's already 1080x1080
+    
+    # Resize background video to 1080x1920 (portrait mode)
     bg_clip = VideoFileClip(bg)
-
+    bg_clip_resized = bg_clip.resized((1080, 1920))  # Resize to 1080x1920 for portrait mode
+    
     # Adjust the background clip duration to match the audio
-    if bg_clip.duration > total:
-        bg_clip = bg_clip.subclipped(0, total)
+    if bg_clip_resized.duration > total:
+        bg_clip_resized = bg_clip_resized.subclipped(0, total)
 
     song_title_words = set(song_title.lower().split())
 
     word_clips = [make_text_clip_grid([text], t0, t1, song_title_words) for (t0, t1), text in subtitles]
 
-    clips = [bg_clip] + word_clips
+    clips = [bg_clip_resized] + word_clips
 
     if SHOW_TITLE:
         img = Image.new("RGBA", (VIDEO_SIZE[0], VIDEO_SIZE[1]), (0,0,0,0))
@@ -267,7 +268,7 @@ def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, s
     outpath = os.path.join(FINAL_FOLDER, sanitize_filename(os.path.basename(output_file)))
 
     # Write the video file with the correct settings
-    final.write_videofile(outpath, fps=30, codec="libx264", audio_codec="aac", preset="slow", bitrate="20000k")
+    final.write_videofile(outpath, fps=30, codec="libx264", audio_codec="aac", preset="slow", bitrate="10000k")
 
     os.remove(temp_audio)
     print(f"[DEBUG] Final video created: {outpath}")
