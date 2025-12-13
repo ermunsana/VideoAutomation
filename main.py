@@ -1,7 +1,3 @@
-# ============================================================
-# FULL SCRIPT WITH DEBUG LOGGING + LEVENSHTEIN + LRC ONLY
-# ============================================================
-
 import os
 import random
 import re
@@ -166,7 +162,7 @@ def parse_lrc_content(lrc_content):
                 start = float(ts)
             start += GLOBAL_SYNC_OFFSET_S
             txt = txt.strip().lower()
-            if txt.lower() not in ("instrumental", "(instrumental)"):
+            if txt.lower() not in ("instrumental", "(instrumental)") :
                 raw_lines.append((start, txt))
         except Exception as e:
             print(f"[DEBUG] Failed LRC parse: {line}  Error: {e}")
@@ -188,7 +184,7 @@ def sanitize_filename(name):
     return re.sub(r'[<>:"/\\|?*]', '_', name)
 
 def make_text_clip_grid(lines, start, end, song_title_words):
-    img = Image.new("RGBA", (VIDEO_SIZE, VIDEO_SIZE), (0,0,0,0))
+    img = Image.new("RGBA", (VIDEO_SIZE, VIDEO_SIZE), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     font = get_font(LYRIC_FONT_SIZE)
 
@@ -208,7 +204,7 @@ def make_text_clip_grid(lines, start, end, song_title_words):
     y_offset = (VIDEO_SIZE - LYRIC_FONT_SIZE * len(grid)) // 2
     for line in grid:
         words = line.split()
-        total_width = sum(draw.textlength(w, font=font) for w in words) + 10*(len(words)-1)
+        total_width = sum(draw.textlength(w, font=font) for w in words) + 10 * (len(words) - 1)
         x_offset = (VIDEO_SIZE - total_width) // 2
 
         for w in words:
@@ -216,54 +212,23 @@ def make_text_clip_grid(lines, start, end, song_title_words):
             for dx in [-0.5, 0, 0.5]:
                 for dy in [-0.5, 0, 0.5]:
                     if dx or dy:
-                        draw.text((x_offset+dx, y_offset+dy), w, font=font, fill="white")
+                        draw.text((x_offset + dx, y_offset + dy), w, font=font, fill="white")
             # main text
             draw.text((x_offset, y_offset), w, font=font, fill="white")
             x_offset += draw.textlength(w, font=font) + 10
 
         y_offset += LYRIC_FONT_SIZE
 
-    return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
-
-
-from pydub import AudioSegment
-import os
-
-def increase_volume(audio_file_or_segment, db_increase=2):
-    """
-    Increases the volume of the audio by the specified dB level.
-    :param audio_file_or_segment: Path to the audio file (str) or an AudioSegment object
-    :param db_increase: dB increase for the audio volume (default is 10dB)
-    :return: AudioSegment with increased volume
-    """
-    if isinstance(audio_file_or_segment, str):  # If it's a file path, load it
-        if os.path.exists(audio_file_or_segment):
-            audio = AudioSegment.from_mp3(audio_file_or_segment)
-        else:
-            print(f"[ERROR] The provided audio file path '{audio_file_or_segment}' is invalid or does not exist.")
-            raise FileNotFoundError(f"Audio file {audio_file_or_segment} not found.")
-    elif isinstance(audio_file_or_segment, AudioSegment):  # If it's already an AudioSegment object
-        audio = audio_file_or_segment
-    else:
-        raise ValueError("The input must be either a file path (str) or an AudioSegment object.")
-    
-    # Increase volume by the specified dB
-    louder_audio = audio + db_increase  # Increasing volume by db_increase dB
-    return louder_audio
-
+    return ImageClip(np.array(img)).with_start(start).with_duration(end - start)
 
 def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time):
-    # Increase the volume of the audio segment
-    audio_segment = increase_volume(audio_segment, db_increase=10)  # Increase volume by 10 dB
-
-    # Continue with your existing code to process the video and audio
     clean = sanitize_filename(song_title)
     temp_audio = os.path.join(MP3_FOLDER, f"{clean}_temp.mp3")
     audio_segment.export(temp_audio, format="mp3")
     audio_clip = AudioFileClip(temp_audio)
     total = audio_clip.duration
 
-    vids = [os.path.join(bg_folder,f) for f in os.listdir(bg_folder) if f.lower().endswith((".mp4",".mov",".mkv"))]
+    vids = [os.path.join(bg_folder, f) for f in os.listdir(bg_folder) if f.lower().endswith((".mp4", ".mov", ".mkv"))]
     if not vids:
         raise Exception("No background videos found.")
     bg = random.choice(vids)
@@ -278,19 +243,19 @@ def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, s
     clips = [bg_clip] + word_clips
 
     if SHOW_TITLE:
-        img = Image.new("RGBA", (VIDEO_SIZE, VIDEO_SIZE), (0,0,0,0))
+        img = Image.new("RGBA", (VIDEO_SIZE, VIDEO_SIZE), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
         font = get_font(TITLE_FONT_SIZE)
-        bbox = draw.textbbox((0,0), song_title, font=font)
-        w,h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        pos = ((VIDEO_SIZE-w)//2, 50)
+        bbox = draw.textbbox((0, 0), song_title, font=font)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        pos = ((VIDEO_SIZE - w) // 2, 50)
         draw.text(pos, song_title, font=font, fill="white", stroke_width=5, stroke_fill="black")
         clips.append(ImageClip(np.array(img)).with_start(0).with_duration(total))
 
     final = CompositeVideoClip(clips, size=(VIDEO_SIZE, VIDEO_SIZE)).with_audio(audio_clip)
     outpath = os.path.join(FINAL_FOLDER, sanitize_filename(os.path.basename(output_file)))
     final.write_videofile(outpath, fps=30, codec="libx264", audio_codec="aac",
-                          preset="medium", ffmpeg_params=["-pix_fmt","yuv420p"])
+                          preset="slow",  bitrate="5000k", ffmpeg_params=["-pix_fmt", "yuv420p"])
 
     os.remove(temp_audio)
     print(f"[DEBUG] Final video created: {outpath}")
@@ -322,7 +287,6 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
     if not cleaned:
         return None
     return min(cleaned, key=len)
-
 
 def save_metadata_to_json(metadata):
     metadata_file = f"metadata/{metadata['artist']}_{metadata['song']}.json"
@@ -372,14 +336,14 @@ if __name__ == "__main__":
         meta = get_youtube_metadata(LINK)
         audio = download_audio(LINK, meta['song'])
 
-    OUTPUT_VIDEO = meta['song'].replace(" ","_")+"_lyric_video.mp4"
+    OUTPUT_VIDEO = meta['song'].replace(" ", "_") + "_lyric_video.mp4"
 
     lrc = fetch_lrc_corrected(meta['artist'], meta['song'], SEGMENT_DURATION_S)
     subs_full = parse_lrc_content(lrc) if lrc else []
 
     START_TIME_S = subs_full[0][0][0] if subs_full else 0
     segment_duration = min(MAX_VIDEO_DURATION, subs_full[-1][0][1] - START_TIME_S) if subs_full else SEGMENT_DURATION_S
-    trimmed = audio[int(START_TIME_S*1000):int((START_TIME_S+segment_duration)*1000)]
+    trimmed = audio[int(START_TIME_S * 1000):int((START_TIME_S + segment_duration) * 1000)]
 
     subs_adj = []
     for (t0, t1), text in subs_full:
@@ -387,9 +351,10 @@ if __name__ == "__main__":
         t1 -= START_TIME_S
         if t1 > 0 and t0 < segment_duration:
             t0n = max(0, t0)
-            t1n = min(segment_duration, max(t0n+0.1, t1))
+            t1n = min(segment_duration, max(t0n + 0.1, t1))
             subs_adj.append(((t0n, t1n), text))
 
     create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO, meta['song'], START_TIME_S)
 
     print("--- Done ---")
+    print("TikTok upload successful!")
