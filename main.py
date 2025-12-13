@@ -6,7 +6,6 @@ import os
 import random
 import re
 import numpy as np
-from pydub import AudioSegment
 from moviepy import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip
 from PIL import Image, ImageDraw
 import yt_dlp
@@ -15,6 +14,9 @@ from font import get_font
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 import difflib
+from pydub import AudioSegment
+import tempfile
+import json
 
 # Optional: Levenshtein
 try:
@@ -24,11 +26,12 @@ except ImportError:
     USE_LEV = False
 
 # ---------------- CONFIG ----------------
-LINKS_FILE = "links.txt"
-TRASH_FILE = "trash.txt"
+LINKS_FILE = "links/links.txt"
+TRASH_FILE = "links/trash.txt"
 BACKGROUND_FOLDER = "backgrounds"
-FINAL_FOLDER = "final"
+FINAL_FOLDER = "TiktokAutoUploader/VideosDirPath"
 MP3_FOLDER = "mp3"
+METADATA_FOLDER = "metadata"
 
 SEGMENT_DURATION_S = 35 
 VIDEO_SIZE = 1080
@@ -56,6 +59,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 
 os.makedirs(MP3_FOLDER, exist_ok=True)
 os.makedirs(FINAL_FOLDER, exist_ok=True)
+os.makedirs("metadata", exist_ok=True)
 
 # ---------------- LINK HANDLING ----------------
 def get_next_link():
@@ -83,13 +87,33 @@ def get_spotify_track_id(url):
         return url.split(":")[2]
     return None
 
+
+def save_metadata(metadata):
+    """Save metadata to a JSON file, overwriting if it already exists."""
+    artist = metadata["artist"]
+    song_title = metadata["song"]
+    metadata_file = os.path.join(METADATA_FOLDER, f"{artist}_{song_title}.json")
+
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4, ensure_ascii=False)
+    print(f"[DEBUG] Metadata saved for {artist} - {song_title} at {metadata_file}")
+
+# Fetch metadata from Spotify
 def get_spotify_metadata(track_id):
     track = sp.track(track_id)
     artist = ", ".join([a['name'] for a in track['artists']])
     song = track['name']
     duration_s = track['duration_ms'] / 1000
     print(f"[DEBUG] Spotify metadata: {artist} - {song}, duration {duration_s}s")
-    return {"artist": artist, "song": song, "duration": duration_s}
+    
+    # Prepare metadata dictionary
+    metadata = {"artist": artist, "song": song, "duration": duration_s}
+    
+    # Save metadata as JSON file (overwrite if exists)
+    save_metadata(metadata)
+    
+    return metadata
+
 
 # ---------------- YOUTUBE AUDIO ----------------
 def search_youtube(song, artist):
@@ -202,8 +226,37 @@ def make_text_clip_grid(lines, start, end, song_title_words):
     return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
 
 
+from pydub import AudioSegment
+import os
+
+def increase_volume(audio_file_or_segment, db_increase=2):
+    """
+    Increases the volume of the audio by the specified dB level.
+    :param audio_file_or_segment: Path to the audio file (str) or an AudioSegment object
+    :param db_increase: dB increase for the audio volume (default is 10dB)
+    :return: AudioSegment with increased volume
+    """
+    if isinstance(audio_file_or_segment, str):  # If it's a file path, load it
+        if os.path.exists(audio_file_or_segment):
+            audio = AudioSegment.from_mp3(audio_file_or_segment)
+        else:
+            print(f"[ERROR] The provided audio file path '{audio_file_or_segment}' is invalid or does not exist.")
+            raise FileNotFoundError(f"Audio file {audio_file_or_segment} not found.")
+    elif isinstance(audio_file_or_segment, AudioSegment):  # If it's already an AudioSegment object
+        audio = audio_file_or_segment
+    else:
+        raise ValueError("The input must be either a file path (str) or an AudioSegment object.")
+    
+    # Increase volume by the specified dB
+    louder_audio = audio + db_increase  # Increasing volume by db_increase dB
+    return louder_audio
+
 
 def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time):
+    # Increase the volume of the audio segment
+    audio_segment = increase_volume(audio_segment, db_increase=10)  # Increase volume by 10 dB
+
+    # Continue with your existing code to process the video and audio
     clean = sanitize_filename(song_title)
     temp_audio = os.path.join(MP3_FOLDER, f"{clean}_temp.mp3")
     audio_segment.export(temp_audio, format="mp3")
@@ -270,6 +323,14 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
         return None
     return min(cleaned, key=len)
 
+
+def save_metadata_to_json(metadata):
+    metadata_file = f"metadata/{metadata['artist']}_{metadata['song']}.json"
+    os.makedirs("metadata", exist_ok=True)  # Ensure the metadata folder exists
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=4)
+    print(f"Metadata saved to {metadata_file}")
+
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
     LINK = get_next_link()
@@ -278,6 +339,10 @@ if __name__ == "__main__":
         track_id = get_spotify_track_id(LINK)
         meta = get_spotify_metadata(track_id)
         print(f"✓ Spotify track: {meta['song']} by {meta['artist']}")
+
+        # Save the metadata to the metadata folder as a JSON file
+        save_metadata_to_json(meta)
+
         youtube_url = search_youtube(meta['song'], meta['artist'])
         audio = download_audio(youtube_url, meta['song'])
     else:
