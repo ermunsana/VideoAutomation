@@ -23,7 +23,7 @@ except ImportError:
 # ---------------- CONFIG ----------------
 LINKS_FILE = "links/links.txt"
 TRASH_FILE = "links/trash.txt"
-BACKGROUND_FOLDER = "testbg"
+BACKGROUND_FOLDER = "backgrounds1920x1080"
 FINAL_FOLDER = "TiktokAutoUploader/VideosDirPath"
 MP3_FOLDER = "mp3"
 METADATA_FOLDER = "metadata"
@@ -267,18 +267,42 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
     except Exception as e:
         print(f"[DEBUG] LRC search failed: {e}")
         return None
-    if not results: return None
-    if isinstance(results, str): results = [results]
-    if not isinstance(results, list): results = [results]
-    cleaned = []
-    for r in results:
-        text = r.get("syncedLyrics") if isinstance(r, dict) else r
-        if isinstance(text, str) and len(text.strip()) >= 4:
-            cleaned.append(text.strip())
-    if not cleaned: return None
-    print(f"[DEBUG] Found {len(cleaned)} LRC candidates")
-    return min(cleaned, key=len)
 
+    if not results:
+        print("[DEBUG] No results from LRC search")
+        return None
+    if isinstance(results, str):
+        results = [results]
+    if not isinstance(results, list):
+        results = [results]
+
+    cleaned = []
+    for i, r in enumerate(results):
+        text = None
+        source = None
+
+        if isinstance(r, dict):
+            text = r.get("syncedLyrics") or r.get("lyrics")
+            source = r.get("source") or r.get("url")
+        elif isinstance(r, str):
+            text = r
+
+        if isinstance(text, str) and len(text.strip()) >= 4:
+            cleaned.append((i, text.strip(), source))
+            print(f"[DEBUG] Candidate {i} lyrics length {len(text.strip())}")
+            if source:
+                print(f"[DEBUG] Candidate {i} source: {source}")
+            else:
+                print(f"[DEBUG] Candidate {i} source: unknown")
+
+    if not cleaned:
+        print("[DEBUG] No cleaned lyrics found")
+        return None
+
+    # Choose the shortest one
+    chosen_index, chosen_text, chosen_source = min(cleaned, key=lambda x: len(x[1]))
+    print(f"[DEBUG] Selected lyrics from candidate {chosen_index} (source: {chosen_source})")
+    return chosen_text
 
 
 # ---------------- MAIN ----------------
