@@ -366,7 +366,7 @@ def create_video(audio_segment, subtitles, output_path, title):
         fps=30,
         codec="libx264",
         audio_codec="aac",
-        preset="veryslow",
+        preset="slow",
         bitrate="15000k"
     )
 
