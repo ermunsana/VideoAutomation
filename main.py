@@ -29,9 +29,8 @@ FINAL_FOLDER = "TiktokAutoUploader/VideosDirPath"
 MP3_FOLDER = "mp3"
 METADATA_FOLDER = "metadata"
 
-SEGMENT_DURATION_S = 35
+SEGMENT_DURATION_S = 30
 VIDEO_SIZE = (1080, 1920)  # Portrait mode (1080x1920)
-TITLE_FONT_SIZE = 50
 LYRIC_FONT_SIZE = 40
 MIN_LINE_DURATION_S = 0.8
 
@@ -42,7 +41,6 @@ FUZZY_MATCH_RATIO = 0.55
 
 GLOBAL_SYNC_OFFSET_S = 0
 START_TIME_S = None
-SHOW_TITLE = False
 MAX_VIDEO_DURATION = 30  # seconds
 
 # Spotify API credentials
@@ -110,6 +108,17 @@ def get_spotify_metadata(track_id):
     return metadata
 
 
+def normalize(text):
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def similarity(a, b):
+    if USE_LEV:
+        return Levenshtein.ratio(normalize(a), normalize(b))
+    return difflib.SequenceMatcher(None, normalize(a), normalize(b)).ratio()
+
+
+
 # ---------------- YOUTUBE AUDIO ----------------
 def search_youtube(song, artist):
     query = f"{artist} {song}"
@@ -118,6 +127,69 @@ def search_youtube(song, artist):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         result = ydl.extract_info(f"ytsearch1:{query}", download=False)
         return result['entries'][0]['webpage_url']
+    
+
+
+def search_youtube_scored(song, artist, spotify_duration, max_results=10):
+    query = f"{artist} {song}"
+    print(f"\n[YOUTUBE] Query: {query}")
+
+    with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+        results = ydl.extract_info(
+            f"ytsearch{max_results}:{query}",
+            download=False
+        )["entries"]
+
+    scored = []
+
+    for r in results:
+        title = r.get("title", "")
+        channel = r.get("uploader", "")
+        duration = r.get("duration") or 0
+
+        score = (
+            similarity(title, song) * 0.55 +
+            similarity(f"{title} {channel}", artist) * 0.35
+        )
+
+        # Prefer official audio
+        if re.search(r"(official audio|audio only)", title, re.I):
+            score += 0.5
+
+        # Nuke music videos
+        if re.search(r"(official video|music video|\bmv\b)", title, re.I):
+            score -= 0.8
+
+        # Trash filters
+        if re.search(r"(lyrics|lyric video|karaoke|remix|cover|nightcore)", title, re.I):
+            score -= 0.6
+
+        # Duration match with Spotify
+        if spotify_duration and duration:
+            diff = abs(duration - spotify_duration)
+            if diff <= 2:
+                score += 0.4
+            elif diff > 15:
+                score -= 0.5
+
+        scored.append({
+            "url": r["webpage_url"],
+            "title": title,
+            "duration": duration,
+            "score": round(score, 3)
+        })
+
+    scored.sort(key=lambda x: x["score"], reverse=True)
+
+    print("[YOUTUBE] Candidates:")
+    for s in scored:
+        print(f"  {s['score']:>5} | {s['duration']:>4}s | {s['title']}")
+
+    best = scored[0]
+    print(f"[YOUTUBE] Selected: {best['title']}\n")
+
+    return best["url"]
+
 
 def download_audio(url, song_title):
     print(f"[DEBUG] Downloading audio: {url}")
@@ -220,59 +292,87 @@ def make_text_clip_grid(lines, start, end, song_title_words):
 
     return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
 
-def create_video(audio_segment, subtitles, bg_folder, output_file, song_title, start_time):
-    # Continue with your existing code to process the video and audio
-    clean = sanitize_filename(song_title)
-    temp_audio = os.path.join(MP3_FOLDER, f"{clean}_temp.mp3")
+#def build_progressive_line_subs(subtitles):
+    """
+    Returns a list of ((start, end), full_text_so_far)
+    where words accumulate progressively within each lyric line.
+    """
+    progressive = []
+
+    for (t0, t1), text in subtitles:
+        words = text.split()
+        if not words:
+            continue
+
+        line_duration = t1 - t0
+        bias = 0.65  # lower = earlier words appear faster
+        step = line_duration * bias / len(words) #
+
+
+        for i in range(len(words)):
+            start = t0 + i * step
+            end = t0 + (i + 1) * step if i < len(words) - 1 else t1
+
+            progressive_text = " ".join(words[:i+1])
+            progressive.append(((start, end), progressive_text))
+
+    return progressive
+
+
+def create_video(audio_segment, subtitles, output_path, title):
+    
+    print(f"[DEBUG] Creating video for: {title}")
+    temp_audio = os.path.join(MP3_FOLDER, "temp_audio.mp3")
     audio_segment.export(temp_audio, format="mp3")
+    print(f"[DEBUG] Exported temp audio to {temp_audio}")
+
     audio_clip = AudioFileClip(temp_audio)
-    total = audio_clip.duration
+    total_duration = audio_clip.duration
+    print(f"[DEBUG] Audio duration: {total_duration}s")
 
-    # Fetch random background video
-    vids = [os.path.join(bg_folder,f) for f in os.listdir(bg_folder) if f.lower().endswith((".mp4",".mov",".mkv"))]
+    # Select a random background video
+    vids = [
+        os.path.join(BACKGROUND_FOLDER, f)
+        for f in os.listdir(BACKGROUND_FOLDER)
+        if f.lower().endswith((".mp4", ".mov", ".mkv"))
+    ]
     if not vids:
-        raise Exception("No background videos found.")
-    bg = random.choice(vids)
-    
-    # Resize background video to 1080x1920 (portrait mode)
-    bg_clip = VideoFileClip(bg)
-    bg_clip_resized = bg_clip.resized((1080, 1920))  # Resize to 1080x1920 for portrait mode
-    
-    # Adjust the background clip duration to match the audio
-    if bg_clip_resized.duration > total:
-        bg_clip_resized = bg_clip_resized.subclipped(0, total)
+        raise Exception("No background videos found in " + BACKGROUND_FOLDER)
 
-    song_title_words = set(song_title.lower().split())
+    bg_file = random.choice(vids)
+    print(f"[DEBUG] Using background: {bg_file}")
+    bg_clip = VideoFileClip(bg_file).resized(VIDEO_SIZE)
 
-    word_clips = [make_text_clip_grid([text], t0, t1, song_title_words) for (t0, t1), text in subtitles]
+    # Trim background to match audio duration
+    if bg_clip.duration > total_duration:
+        bg_clip = bg_clip.subclipped(0, total_duration)
+        print(f"[DEBUG] Trimmed background to {total_duration}s")
 
-    clips = [bg_clip_resized] + word_clips
+    # Create text clips for each subtitle line using grid layout
+    text_clips = []
+    song_title_words = set(title.lower().split())
+    for (start, end), text in subtitles:
+        print(f"[DEBUG] Subtitle: '{text}' ({start:.2f}-{end:.2f}s)")
+        clip = make_text_clip_grid([text], start, end, song_title_words)
+        text_clips.append(clip)
 
-    if SHOW_TITLE:
-        img = Image.new("RGBA", (VIDEO_SIZE[0], VIDEO_SIZE[1]), (0,0,0,0))
-        draw = ImageDraw.Draw(img)
-        font = get_font(TITLE_FONT_SIZE)
-        bbox = draw.textbbox((0,0), song_title, font=font)
-        w,h = bbox[2]-bbox[0], bbox[3]-bbox[1]
-        pos = ((VIDEO_SIZE[0]-w)//2, 50)
-        draw.text(pos, song_title, font=font, fill="white", stroke_width=5, stroke_fill="black")
-        clips.append(ImageClip(np.array(img)).with_start(0).with_duration(total))
+    # Combine background + text + audio
+    final = CompositeVideoClip([bg_clip] + text_clips).with_audio(audio_clip)
 
-    # Create the composite video
-    final = CompositeVideoClip(clips)
-
-    # Set audio to the video
-    final = final.with_audio(audio_clip)
-
-    # Set the output file path
-    outpath = os.path.join(FINAL_FOLDER, sanitize_filename(os.path.basename(output_file)))
-
-    # Write the video file with the correct settings
-    final.write_videofile(outpath, fps=30, codec="libx264", audio_codec="aac", preset="veryslow", bitrate="15000k")
+    # Write final video
+    print(f"[DEBUG] Writing video to {output_path}")
+    final.write_videofile(
+        output_path,
+        fps=30,
+        codec="libx264",
+        audio_codec="aac",
+        preset="veryslow",
+        bitrate="15000k"
+    )
 
     os.remove(temp_audio)
-    print(f"[DEBUG] Final video created: {outpath}")
-    return outpath, total
+    print(f"[DEBUG] Video creation complete: {output_path}")
+
 
 # ---------------- FETCH LRC ----------------
 def fetch_lrc_corrected(artist, song, max_duration_s):
@@ -303,71 +403,85 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
 
 
 def save_metadata_to_json(metadata):
-    metadata_file = f"metadata/{metadata['artist']}_{metadata['song']}.json"
-    os.makedirs("metadata", exist_ok=True)  # Ensure the metadata folder exists
+    # Remove spaces from artist name inside metadata
+    metadata['artist'] = metadata['artist'].replace(" ", "")
+
+    # Build metadata file path
+    artist_clean = metadata['artist']
+    metadata_file = f"metadata/{artist_clean}.json"
+
+    # Ensure metadata folder exists
+    os.makedirs("metadata", exist_ok=True)
+
+    # Save metadata
     with open(metadata_file, "w", encoding="utf-8") as f:
         json.dump(metadata, f, ensure_ascii=False, indent=4)
-    print(f"Metadata saved to {metadata_file}")
+
+    print(f"[DEBUG] Metadata saved to {metadata_file}")
+
+
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
+    # Get next Spotify link
     LINK = get_next_link()
 
-    if is_spotify_link(LINK):
-        track_id = get_spotify_track_id(LINK)
-        meta = get_spotify_metadata(track_id)
-        print(f"✓ Spotify track: {meta['song']} by {meta['artist']}")
+    if not is_spotify_link(LINK):
+        raise Exception("Expected a Spotify track link.")
 
-        # Save the metadata to the metadata folder as a JSON file
-        save_metadata_to_json(meta)
+    # Get Spotify metadata
+    track_id = get_spotify_track_id(LINK)
+    meta = get_spotify_metadata(track_id)
+    print(f"[DEBUG] Spotify track: {meta['song']} by {meta['artist']}")
 
-        youtube_url = search_youtube(meta['song'], meta['artist'])
-        audio = download_audio(youtube_url, meta['song'])
-    else:
-        youtube_url = LINK
+    # Search for YouTube audio
+    youtube_url = search_youtube_scored(
+        meta["song"],
+        meta["artist"],
+        meta["duration"]
+    )
 
-        def get_youtube_metadata(url):
-            opts = {"quiet": True, "no_warnings": True, "format": "bestaudio/best"}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-            raw_title = info.get("title", "").strip()
-            uploader = info.get("uploader", "").strip()
-            artist, song = uploader, raw_title
-            quoted = re.findall(r'"([^"]+)"', raw_title)
-            if quoted:
-                song = quoted[0].strip()
-                rest = raw_title.replace(f'"{song}"', '').strip()
-                artist = rest if rest else uploader
-            elif ' - ' in raw_title:
-                parts = raw_title.split(' - ', 1)
-                artist, song = parts[0].strip(), parts[1].strip()
-            song = re.sub(r"(official video|official audio|lyrics|mv|hd|4k|audio|video)", "", song, flags=re.I)
-            song = re.sub(r"\(.*?\)|\[.*?\]", "", song)
-            song = " ".join(song.split()).title()
-            print(f"[DEBUG] YT metadata -> Artist: {artist}, Song: {song}")
-            return {"artist": artist, "song": song, "full_title": raw_title}
+    # Download audio
+    audio = download_audio(youtube_url, meta["song"])
 
-        meta = get_youtube_metadata(LINK)
-        audio = download_audio(LINK, meta['song'])
+    # Fetch LRC lyrics
+    lrc = lrc = fetch_lrc_corrected(meta["artist"], meta["song"], SEGMENT_DURATION_S)
+    if not lrc:
+        raise Exception("No lyrics found.")
+    subs_full = parse_lrc_content(lrc)
 
-    OUTPUT_VIDEO = meta['song'].replace(" ","_")+"_lyric_video.mp4"
+    # Determine trim times
+    START_TIME = subs_full[0][0][0]
+    END_TIME = min(
+        START_TIME + MAX_VIDEO_DURATION,
+        subs_full[-1][0][1]
+    )
 
-    lrc = fetch_lrc_corrected(meta['artist'], meta['song'], SEGMENT_DURATION_S)
-    subs_full = parse_lrc_content(lrc) if lrc else []
+    # Trim audio segment
+    trimmed_audio = audio[int(START_TIME * 1000):int(END_TIME * 1000)]
 
-    START_TIME_S = subs_full[0][0][0] if subs_full else 0
-    segment_duration = min(MAX_VIDEO_DURATION, subs_full[-1][0][1] - START_TIME_S) if subs_full else SEGMENT_DURATION_S
-    trimmed = audio[int(START_TIME_S*1000):int((START_TIME_S+segment_duration)*1000)]
-
+    # Adjust subtitle timings relative to trimmed audio
     subs_adj = []
     for (t0, t1), text in subs_full:
-        t0 -= START_TIME_S
-        t1 -= START_TIME_S
-        if t1 > 0 and t0 < segment_duration:
-            t0n = max(0, t0)
-            t1n = min(segment_duration, max(t0n+0.1, t1))
-            subs_adj.append(((t0n, t1n), text))
+        if t1 <= START_TIME or t0 >= END_TIME:
+            continue
+        subs_adj.append(((t0 - START_TIME, t1 - START_TIME), text))
 
-    create_video(trimmed, subs_adj, BACKGROUND_FOLDER, OUTPUT_VIDEO, meta['song'], START_TIME_S)
+    print(f"[DEBUG] Final subtitle lines: {len(subs_adj)}")
 
-    print("--- Done ---")
+    # Create video filename (single line-by-line lyric video)
+    title = meta["song"]
+    video_file = f"{title.replace(' ', '_')}_lyric_video.mp4"
+    output_path = os.path.join(FINAL_FOLDER, video_file)
+
+    # Generate the video
+    create_video(
+        trimmed_audio,
+        subs_adj,
+        output_path,
+        title
+    )
+
+    print(f"[DEBUG] Video saved: {output_path}")
+    print("[DEBUG] Done")
+
