@@ -28,13 +28,13 @@ FINAL_FOLDER = "TiktokAutoUploader/VideosDirPath"
 MP3_FOLDER = "mp3"
 METADATA_FOLDER = "metadata"
 
-SEGMENT_DURATION_S = 30
+SEGMENT_DURATION_S = 50
 VIDEO_SIZE = (1080, 1920)
-LYRIC_FONT_SIZE = 50
+LYRIC_FONT_SIZE = 45
 MIN_LINE_DURATION_S = 0.8
 CHAR_FACTOR = 0.8
 GLOBAL_SYNC_OFFSET_S = 0
-MAX_VIDEO_DURATION = 30
+MAX_VIDEO_DURATION = 50
 
 # Spotify API
 SPOTIFY_CLIENT_ID = "9ee4f1bd0800439e888bb839adb47721"
@@ -220,51 +220,64 @@ def parse_lrc_content(lrc_content):
     return parsed
 
 # ---------------- VIDEO CLIPS ----------------
-def make_text_clip_grid(lines, start, end, song_title_phrase):
-    img = Image.new("RGBA", VIDEO_SIZE, (0,0,0,0))
+def make_text_clip_grid(lines, start, end, song_title_words):
+    img = Image.new("RGBA", (VIDEO_SIZE[0], VIDEO_SIZE[1]), (0,0,0,0))
     draw = ImageDraw.Draw(img)
-    font = get_font(LYRIC_FONT_SIZE)  # <- your original font, only call once
+    font = get_font(LYRIC_FONT_SIZE)
 
     max_words_per_line = 3
     grid = []
     for line in lines:
-        ws = [w.lower() for w in line.split()]
+        ws = [w.lower() for w in line.split()]  # convert all words to lowercase
         buff = []
         for w in ws:
             buff.append(w)
             if len(buff) >= max_words_per_line:
                 grid.append(" ".join(buff))
                 buff = []
-        if buff: grid.append(" ".join(buff))
+        if buff:
+            grid.append(" ".join(buff))
 
     y_offset = (VIDEO_SIZE[1] - LYRIC_FONT_SIZE * len(grid)) // 2
+
+    # lowercase full phrase for matching
+    phrase_lower = " ".join([w.lower() for w in song_title_words])
+
     for line in grid:
         words = line.split()
         total_width = sum(draw.textlength(w, font=font) for w in words) + 10*(len(words)-1)
         x_offset = (VIDEO_SIZE[0] - total_width) // 2
 
-        # handle highlighting full phrase
+        # check for exact match in line
         line_lower = line.lower()
-        phrase_lower = song_title_phrase.lower()
         idx = line_lower.find(phrase_lower)
         if idx != -1:
+            # split line into before, match, after
             before = line[:idx]
             match = line[idx:idx+len(phrase_lower)]
             after = line[idx+len(phrase_lower):]
 
             for text, color in [(before, "white"), (match, "red"), (after, "white")]:
                 for w in text.split():
+                    for dx in [-0.5, 0, 0.5]:
+                        for dy in [-0.5, 0, 0.5]:
+                            if dx or dy:
+                                draw.text((x_offset+dx, y_offset+dy), w, font=font, fill=color)
                     draw.text((x_offset, y_offset), w, font=font, fill=color)
                     x_offset += draw.textlength(w, font=font) + 10
         else:
             for w in words:
+                for dx in [-0.5, 0, 0.5]:
+                    for dy in [-0.5, 0, 0.5]:
+                        if dx or dy:
+                            draw.text((x_offset+dx, y_offset+dy), w, font=font, fill="white")
                 draw.text((x_offset, y_offset), w, font=font, fill="white")
                 x_offset += draw.textlength(w, font=font) + 10
 
         y_offset += LYRIC_FONT_SIZE
 
-    duration = max(0, min(end-start, MAX_VIDEO_DURATION-start))
-    return ImageClip(np.array(img)).with_start(start).with_duration(duration)
+    return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
+
 
 # ---------------- VIDEO CREATION ----------------
 def create_video(audio_segment, subtitles, output_path, title):
@@ -345,6 +358,7 @@ if __name__ == "__main__":
     meta = get_spotify_metadata(track_id)
     print(f"[DEBUG] Spotify track: {meta['song']} by {meta['artist']}")
     youtube_url = search_youtube_scored(meta["song"], meta["artist"], meta["duration"])
+    print(f"[DEBUG] Selected YouTube video URL: {youtube_url}")
     audio = download_audio(youtube_url, meta["song"])
     lrc = fetch_lrc_corrected(meta["artist"], meta["song"], SEGMENT_DURATION_S)
     if not lrc: raise Exception("No lyrics found.")
