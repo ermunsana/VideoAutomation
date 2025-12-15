@@ -30,7 +30,7 @@ METADATA_FOLDER = "metadata"
 
 SEGMENT_DURATION_S = 30
 VIDEO_SIZE = (1080, 1920)
-LYRIC_FONT_SIZE = 40
+LYRIC_FONT_SIZE = 50
 MIN_LINE_DURATION_S = 0.8
 CHAR_FACTOR = 0.8
 GLOBAL_SYNC_OFFSET_S = 0
@@ -75,16 +75,15 @@ def get_spotify_track_id(url):
         return url.split(":")[2]
     return None
 
+# ---------------- METADATA ----------------
 def save_metadata_to_json(metadata):
-    metadata['artist'] = metadata['artist'].replace(" ", "").lower()
-    song_clean = metadata['song'].replace(" ", "_").lower()
+    artistclean = metadata["artistclean"]
+    song_clean = metadata["song"].replace(" ", "_").lower()
     os.makedirs(METADATA_FOLDER, exist_ok=True)
-    file_path = os.path.join(METADATA_FOLDER, f"{metadata['artist']}_{song_clean}.json")
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=4)
-    print(f"[DEBUG] Metadata saved to {file_path}")
-
-
+    metadata_file = os.path.join(METADATA_FOLDER, f"{artistclean}_{song_clean}.json")
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(metadata, f, indent=4, ensure_ascii=False)
+    print(f"[DEBUG] Metadata saved to {metadata_file}")
 
 def get_spotify_metadata(track_id):
     track = sp.track(track_id)
@@ -92,7 +91,16 @@ def get_spotify_metadata(track_id):
     song = track['name']
     duration_s = track['duration_ms'] / 1000
     print(f"[DEBUG] Spotify metadata: {artist} - {song}, duration {duration_s}s")
-    metadata = {"artist": artist, "song": song, "duration": duration_s}
+
+    artistclean = artist.replace(" ", "").lower()
+
+    metadata = {
+        "artist": artist,           # normal format for YouTube search
+        "artistclean": artistclean, # sanitized for TikTok captions / filenames
+        "song": song,
+        "duration": duration_s
+    }
+
     save_metadata_to_json(metadata)
     return metadata
 
@@ -146,22 +154,34 @@ def download_audio(url, song_title):
     if os.path.exists(temp_path):
         print(f"[DEBUG] Using cached audio: {temp_path}")
         return AudioSegment.from_mp3(temp_path)
+    
     print(f"[DEBUG] Downloading audio: {url}")
     ydl_opts = {
         'format': 'bestaudio/best',
-        'postprocessors': [{'key': 'FFmpegExtractAudio','preferredcodec': 'mp3','preferredquality': '192'}],
-        'outtmpl': os.path.join(MP3_FOLDER, "yt_audio"),
-        'quiet': True, 'no_warnings': True
+        'outtmpl': os.path.join(MP3_FOLDER, clean_title_str + '.%(ext)s'),
+        'quiet': True,
+        'no_warnings': True,
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192'
+        }],
     }
+    
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        ydl.download([url])
-    os.rename(os.path.join(MP3_FOLDER, "yt_audio.mp3"), temp_path)
+        info = ydl.extract_info(url, download=True)
+    
+    downloaded_path = os.path.join(MP3_FOLDER, clean_title_str + ".mp3")
+    if not os.path.exists(downloaded_path):
+        raise Exception(f"Download failed, file not found: {downloaded_path}")
+    
+    os.rename(downloaded_path, temp_path)
     print(f"[DEBUG] Audio downloaded to: {temp_path}")
     return AudioSegment.from_mp3(temp_path)
 
 # ---------------- LRC ----------------
 def parse_lrc_content(lrc_content):
-    if not lrc_content: 
+    if not lrc_content:
         print("[DEBUG] No LRC content.")
         return []
     raw_lines = []
@@ -186,7 +206,7 @@ def parse_lrc_content(lrc_content):
                 raw_lines.append((start, txt))
         except Exception as e:
             print(f"[DEBUG] Failed LRC parse: {line}  Error: {e}")
-    if not raw_lines: 
+    if not raw_lines:
         print("[DEBUG] No valid LRC lines found.")
         return []
     parsed = []
@@ -200,10 +220,11 @@ def parse_lrc_content(lrc_content):
     return parsed
 
 # ---------------- VIDEO CLIPS ----------------
-def make_text_clip_grid(lines, start, end, song_title_words):
+def make_text_clip_grid(lines, start, end, song_title_phrase):
     img = Image.new("RGBA", VIDEO_SIZE, (0,0,0,0))
     draw = ImageDraw.Draw(img)
-    font = get_font(LYRIC_FONT_SIZE)
+    font = get_font(LYRIC_FONT_SIZE)  # <- your original font, only call once
+
     max_words_per_line = 3
     grid = []
     for line in lines:
@@ -215,21 +236,34 @@ def make_text_clip_grid(lines, start, end, song_title_words):
                 grid.append(" ".join(buff))
                 buff = []
         if buff: grid.append(" ".join(buff))
+
     y_offset = (VIDEO_SIZE[1] - LYRIC_FONT_SIZE * len(grid)) // 2
     for line in grid:
         words = line.split()
         total_width = sum(draw.textlength(w, font=font) for w in words) + 10*(len(words)-1)
         x_offset = (VIDEO_SIZE[0] - total_width) // 2
-        for w in words:
-            for dx in [-0.5,0,0.5]:
-                for dy in [-0.5,0,0.5]:
-                    if dx or dy:
-                        draw.text((x_offset+dx, y_offset+dy), w, font=font, fill="white")
-            draw.text((x_offset, y_offset), w, font=font, fill="white")
-            x_offset += draw.textlength(w, font=font) + 10
+
+        # handle highlighting full phrase
+        line_lower = line.lower()
+        phrase_lower = song_title_phrase.lower()
+        idx = line_lower.find(phrase_lower)
+        if idx != -1:
+            before = line[:idx]
+            match = line[idx:idx+len(phrase_lower)]
+            after = line[idx+len(phrase_lower):]
+
+            for text, color in [(before, "white"), (match, "red"), (after, "white")]:
+                for w in text.split():
+                    draw.text((x_offset, y_offset), w, font=font, fill=color)
+                    x_offset += draw.textlength(w, font=font) + 10
+        else:
+            for w in words:
+                draw.text((x_offset, y_offset), w, font=font, fill="white")
+                x_offset += draw.textlength(w, font=font) + 10
+
         y_offset += LYRIC_FONT_SIZE
+
     duration = max(0, min(end-start, MAX_VIDEO_DURATION-start))
-    print(f"[DEBUG] Created text clip for duration {duration}s: '{lines[0]}'")
     return ImageClip(np.array(img)).with_start(start).with_duration(duration)
 
 # ---------------- VIDEO CREATION ----------------
@@ -246,12 +280,12 @@ def create_video(audio_segment, subtitles, output_path, title):
     bg_file = random.choice(vids)
     print(f"[DEBUG] Using background: {bg_file}")
     bg_clip = VideoFileClip(bg_file).resized(VIDEO_SIZE).subclipped(0, total_duration)
-    song_title_words = set(title.lower().split())
+    song_title_phrase = meta["song"].lower()
     text_clips = []
     for (start, end), text in subtitles:
         if start >= total_duration: continue
         end = min(end, total_duration)
-        clip = make_text_clip_grid([text], start, end, song_title_words)
+        clip = make_text_clip_grid([text], start, end, song_title_phrase)
         text_clips.append(clip)
     final = CompositeVideoClip([bg_clip]+text_clips).with_audio(audio_clip)
     print(f"[DEBUG] Writing video to {output_path}")
@@ -299,11 +333,9 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
         print("[DEBUG] No cleaned lyrics found")
         return None
 
-    # Choose the shortest one
     chosen_index, chosen_text, chosen_source = min(cleaned, key=lambda x: len(x[1]))
     print(f"[DEBUG] Selected lyrics from candidate {chosen_index} (source: {chosen_source})")
     return chosen_text
-
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":

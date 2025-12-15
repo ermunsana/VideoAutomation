@@ -60,18 +60,16 @@ metadata = load_metadata()
 os.chdir("TiktokAutoUploader")
 
 # Load metadata
-
 title = metadata['song']
-artist = metadata['artist']
+artistclean = metadata['artistclean']  # use artistclean for captions
 
 # Get the output video file path (ensure the correct final file)
 video_file = f"{title.replace(' ', '_')}_lyric_video.mp4"
 
 # Run the TikTok upload command within the correct environment
 try:
-    subprocess.run([venv_python, "cli.py", "upload", "-u", "cloud0ra", "-v", video_file, "-t", f"{title} #{artist}"], check=True)
+    subprocess.run([venv_python, "cli.py", "upload", "-u", "cloud0ra", "-v", video_file, "-t", f"{title} #{artistclean}", "-vi", "1"], check=True)
     print("TikTok upload successful!")
 except subprocess.CalledProcessError as e:
     print(f"[ERROR] Error uploading to TikTok: {e}")
     sys.exit(1)
-
