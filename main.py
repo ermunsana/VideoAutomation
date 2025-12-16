@@ -23,7 +23,7 @@ except ImportError:
 # ---------------- CONFIG ----------------
 LINKS_FILE = "links/links.txt"
 TRASH_FILE = "links/trash.txt"
-BACKGROUND_FOLDER = "backgrounds1920x1080"
+BACKGROUND_FOLDER = "blur"
 FINAL_FOLDER = "TiktokAutoUploader/VideosDirPath"
 MP3_FOLDER = "mp3"
 METADATA_FOLDER = "metadata"
@@ -35,6 +35,10 @@ MIN_LINE_DURATION_S = 0.8
 CHAR_FACTOR = 0.8
 GLOBAL_SYNC_OFFSET_S = 0
 MAX_VIDEO_DURATION = 30
+
+DRIFT_PIXELS = 9
+
+
 
 # Spotify API
 SPOTIFY_CLIENT_ID = "9ee4f1bd0800439e888bb839adb47721"
@@ -122,7 +126,7 @@ def search_youtube(song, artist):
         print(f"[DEBUG] YouTube search result: {result['entries'][0]['title']}")
         return result['entries'][0]['webpage_url']
 
-def search_youtube_scored(song, artist, spotify_duration, max_results=10):
+def search_youtube_scored(song, artist, spotify_duration, max_results=5):
     query = f"{artist} {song}"
     print(f"[DEBUG] YouTube scored search for: {query}")
     with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
@@ -276,7 +280,19 @@ def make_text_clip_grid(lines, start, end, song_title_words):
 
         y_offset += LYRIC_FONT_SIZE
 
-    return ImageClip(np.array(img)).with_start(start).with_duration(end-start)
+    clip = ImageClip(np.array(img)).with_start(start).with_duration(end - start)
+
+    img_h = img.size[1]
+    base_y = (VIDEO_SIZE[1] - img_h) // 2
+
+    clip = clip.with_position(
+        lambda t: (
+            (VIDEO_SIZE[0] - img.size[0]) // 2,
+            int(base_y - DRIFT_PIXELS * (t / clip.duration))
+        )
+    )
+    return clip
+
 
 
 # ---------------- VIDEO CREATION ----------------
@@ -295,11 +311,20 @@ def create_video(audio_segment, subtitles, output_path, title):
     bg_clip = VideoFileClip(bg_file).resized(VIDEO_SIZE).subclipped(0, total_duration)
     song_title_phrase = meta["song"].lower()
     text_clips = []
-    for (start, end), text in subtitles:
-        if start >= total_duration: continue
+    for i, ((start, end), text) in enumerate(subtitles):
+        if start >= total_duration:
+            continue
+
         end = min(end, total_duration)
-        clip = make_text_clip_grid([text], start, end, song_title_phrase)
+        clip = make_text_clip_grid(
+            [text],
+            start,
+            end,
+            song_title_phrase
+        )
+
         text_clips.append(clip)
+
     final = CompositeVideoClip([bg_clip]+text_clips).with_audio(audio_clip)
     print(f"[DEBUG] Writing video to {output_path}")
     final.write_videofile(output_path, fps=30, codec="libx264", audio_codec="aac", preset="slow", bitrate="15000k")

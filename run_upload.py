@@ -45,7 +45,7 @@ video_file = f"{title.replace(' ', '_')}_lyric_video.mp4"
 
 # Run the TikTok upload command within the correct environment
 try:
-    subprocess.run([venv_python, "cli.py", "upload", "-u", "cloud0ra", "-v", video_file, "-t", f"{title} #{artistclean}", "-vi", "1"], check=True)
+    subprocess.run([venv_python, "cli.py", "upload", "-u", "cloud0ra", "-v", video_file, "-t", f"{title} #{artistclean}", "-vi", "0"], check=True)
     print("TikTok upload successful!")
 except subprocess.CalledProcessError as e:
     print(f"[ERROR] Error uploading to TikTok: {e}")
