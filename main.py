@@ -41,8 +41,8 @@ DRIFT_PIXELS = 9
 
 
 #API
-SPOTIFY_CLIENT_ID = "9ee4f1bd0800439e888bb839adb47721"
-SPOTIFY_CLIENT_SECRET = "b60c490e6437477ba0e276094896a3a8"
+SPOTIFY_CLIENT_ID = ""
+SPOTIFY_CLIENT_SECRET = ""
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id=SPOTIFY_CLIENT_ID,
     client_secret=SPOTIFY_CLIENT_SECRET
