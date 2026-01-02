@@ -13,14 +13,14 @@ import difflib
 from pydub import AudioSegment
 import json
 
-# Optional: Levenshtein
+
 try:
     import Levenshtein
     USE_LEV = True
 except ImportError:
     USE_LEV = False
 
-# ---------------- CONFIG ----------------
+#CONFIG
 LINKS_FILE = "links/links.txt"
 TRASH_FILE = "links/trash.txt"
 BACKGROUND_FOLDER = "blur"
@@ -40,7 +40,7 @@ DRIFT_PIXELS = 9
 
 
 
-# Spotify API
+#API
 SPOTIFY_CLIENT_ID = "9ee4f1bd0800439e888bb839adb47721"
 SPOTIFY_CLIENT_SECRET = "b60c490e6437477ba0e276094896a3a8"
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
@@ -52,7 +52,7 @@ os.makedirs(MP3_FOLDER, exist_ok=True)
 os.makedirs(FINAL_FOLDER, exist_ok=True)
 os.makedirs(METADATA_FOLDER, exist_ok=True)
 
-# ---------------- LINK HANDLING ----------------
+
 def get_next_link():
     if not os.path.exists(LINKS_FILE):
         raise Exception("links.txt missing.")
@@ -79,7 +79,7 @@ def get_spotify_track_id(url):
         return url.split(":")[2]
     return None
 
-# ---------------- METADATA ----------------
+
 def save_metadata_to_json(metadata):
     artistclean = metadata["artistclean"]
     song_clean = metadata["song"].replace(" ", "_").lower()
@@ -99,8 +99,8 @@ def get_spotify_metadata(track_id):
     artistclean = artist.replace(" ", "").lower()
 
     metadata = {
-        "artist": artist,           # normal format for YouTube search
-        "artistclean": artistclean, # sanitized for TikTok captions / filenames
+        "artist": artist,           
+        "artistclean": artistclean, 
         "song": song,
         "duration": duration_s
     }
@@ -116,7 +116,7 @@ def similarity(a, b):
         return Levenshtein.ratio(normalize(a), normalize(b))
     return difflib.SequenceMatcher(None, normalize(a), normalize(b)).ratio()
 
-# ---------------- YOUTUBE AUDIO ----------------
+
 def search_youtube(song, artist):
     query = f"{artist} {song}"
     print(f"[DEBUG] Searching YouTube: {query}")
@@ -183,7 +183,7 @@ def download_audio(url, song_title):
     print(f"[DEBUG] Audio downloaded to: {temp_path}")
     return AudioSegment.from_mp3(temp_path)
 
-# ---------------- LRC ----------------
+
 def parse_lrc_content(lrc_content):
     if not lrc_content:
         print("[DEBUG] No LRC content.")
@@ -223,7 +223,7 @@ def parse_lrc_content(lrc_content):
     print(f"[DEBUG] Parsed {len(parsed)} subtitle lines")
     return parsed
 
-# ---------------- VIDEO CLIPS ----------------
+
 def make_text_clip_grid(lines, start, end, song_title_words):
     img = Image.new("RGBA", (VIDEO_SIZE[0], VIDEO_SIZE[1]), (0,0,0,0))
     draw = ImageDraw.Draw(img)
@@ -232,7 +232,7 @@ def make_text_clip_grid(lines, start, end, song_title_words):
     max_words_per_line = 3
     grid = []
     for line in lines:
-        ws = [w.lower() for w in line.split()]  # convert all words to lowercase
+        ws = [w.lower() for w in line.split()] 
         buff = []
         for w in ws:
             buff.append(w)
@@ -244,7 +244,7 @@ def make_text_clip_grid(lines, start, end, song_title_words):
 
     y_offset = (VIDEO_SIZE[1] - LYRIC_FONT_SIZE * len(grid)) // 2
 
-    # lowercase full phrase for matching
+
     phrase_lower = " ".join([w.lower() for w in song_title_words])
 
     for line in grid:
@@ -252,11 +252,11 @@ def make_text_clip_grid(lines, start, end, song_title_words):
         total_width = sum(draw.textlength(w, font=font) for w in words) + 10*(len(words)-1)
         x_offset = (VIDEO_SIZE[0] - total_width) // 2
 
-        # check for exact match in line
+
         line_lower = line.lower()
         idx = line_lower.find(phrase_lower)
         if idx != -1:
-            # split line into before, match, after
+
             before = line[:idx]
             match = line[idx:idx+len(phrase_lower)]
             after = line[idx+len(phrase_lower):]
@@ -295,7 +295,6 @@ def make_text_clip_grid(lines, start, end, song_title_words):
 
 
 
-# ---------------- VIDEO CREATION ----------------
 def create_video(audio_segment, subtitles, output_path, title):
     print(f"[DEBUG] Creating video for: {title}")
     temp_audio = os.path.join(MP3_FOLDER, "temp_audio.mp3")
@@ -331,7 +330,7 @@ def create_video(audio_segment, subtitles, output_path, title):
     os.remove(temp_audio)
     print(f"[DEBUG] Video creation complete: {output_path}")
 
-# ---------------- FETCH LRC ----------------
+
 def fetch_lrc_corrected(artist, song, max_duration_s):
     print(f"[DEBUG] Searching for LRC: {artist} - {song}")
     try:
@@ -375,7 +374,7 @@ def fetch_lrc_corrected(artist, song, max_duration_s):
     print(f"[DEBUG] Selected lyrics from candidate {chosen_index} (source: {chosen_source})")
     return chosen_text
 
-# ---------------- MAIN ----------------
+
 if __name__ == "__main__":
     LINK = get_next_link()
     if not is_spotify_link(LINK): raise Exception("Expected a Spotify track link.")
